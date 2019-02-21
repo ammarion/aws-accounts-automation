@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-"""python3 create_account.py --account_name ate-io-product54 --account_email ate-io-product54@gmail.com"""
+"""python3 create_account.py --account_name ate-io-product54 --account_email ate-io-product54@pearson.com"""
 
-from __future__ import print_function
 import boto3
 import botocore
 import time
@@ -104,6 +103,23 @@ def assume_role(accountid, account_role):
     # From the response that contains the assumed role, get the temporary
     # credentials that can be used to make subsequent API calls
     return assumedRoleObject['Credentials']
+
+
+def put_public_access_block(credentials, account):
+    """Creates or modifies the Public Access Block configuration for an Amazon Web Services account."""
+    control = boto3.client('s3control',
+                          aws_access_key_id=credentials['AccessKeyId'],
+                          aws_secret_access_key=credentials['SecretAccessKey'],
+                          aws_session_token=credentials['SessionToken'])
+    control.put_public_access_block(
+        PublicAccessBlockConfiguration={
+            'BlockPublicAcls': True,
+            'IgnorePublicAcls': True,
+            'BlockPublicPolicy': True,
+            'RestrictPublicBuckets': True
+        },
+        AccountId=account
+    )
 
 
 def get_template(template_file):
@@ -226,59 +242,20 @@ def main(arguments):
     scp = None
 
     print("Creating new account: " + args.account_name + " (" + args.account_email + ")")
-    accountid = create_account(args.account_name, args.account_email, args.account_role, access_to_billing, organization_unit_id, scp)
-    """" Comment the above line and uncomment the below line to skip
+    #accountid = create_account(args.account_name, args.account_email, args.account_role,access_to_billing, organization_unit_id, scp)
+    """" Comment the above line and uncomment the below line to skip 
      account creation and just test Cfn deployment (for testing)"""
-    # accountid = "504945044148"
+    accountid = "099252316056"
     print("Created acount: " + accountid)
     credentials = assume_role(accountid, args.account_role)
-
+    print("Set Public Access Block configuration on account : " + accountid)
+    put_public_access_block(credentials, account=accountid)
     print("Deploying resources from " + args.template_file + " as " + args.stack_name + " in " + args.stack_region)
     template = get_template(args.template_file)
-    stack = deploy_resources(credentials, template, args.stack_name, args.stack_region, args.account_name, args.account_email, args.account_name)
+    stack = deploy_resources(credentials, template, args.stack_name, args.stack_region, args.account_name,
+                             args.account_email, args.account_name)
     print(stack)
     print("Resources deployed for account " + accountid + " (" + args.account_email + ")")
-
-    def get_groups_template(template_groups_file):
-
-        """
-            Read a template file and return the contents
-        """
-
-        print("Reading groups from " + template_groups_file)
-        f = open(template_groups_file, "r")
-        groups_template = f.read()
-        return groups_template
-
-    def assume_role_iam_prd():
-
-        """
-            Assume admin role within the Pearson-IAM account and return credentials
-        """
-        s = boto3.Session(profile_name='prd')
-        sts_client = s.client('sts')
-        role_arn = 'arn:aws:iam::812653090533:role/managed-role/PearsonAdmin'
-
-        # Call the assume_role method of the STSConnection object and pass the role
-        # ARN and a role session name.
-
-        assuming_role = True
-        while assuming_role is True:
-            try:
-                assuming_role = False
-                assumedroleobject = sts_client.assume_role(
-                    RoleArn=role_arn,
-                    RoleSessionName="IAM-PearsonAccountRole"
-                )
-            except botocore.exceptions.ClientError as e:
-                assuming_role = True
-                print(e)
-                print("Retrying...")
-                time.sleep(10)
-
-        # From the response that contains the assumed role, get the temporary
-        # credentials that can be used to make subsequent API calls
-        return assumedroleobject['Credentials']
 
     # Enable enterprise support
 
@@ -293,32 +270,21 @@ def main(arguments):
             communicationBody='Hello AWS, please enable the Enterprise Support Plan for account {}\
             which is a member of our Organization'.format(accountid),
             ccEmailAddresses=[
-                'ammar.alim@gmail.com', 'jake@gmail.com',
+                'ammar.alim@pearson.com', 'ate-io-finops@pearson.com',
             ],
             language='en',
             issueType='customer-service'
         )
         print(response)
 
-    # Create groups in iam-prd account
 
-    def get_groups_template(template_groups_file):
 
-        """
-            Read a template file and return the contents
-        """
-
-        print("Reading groups from " + template_groups_file)
-        f = open(template_groups_file, "r")
-        groups_template = f.read()
-        return groups_template
-
-    def assume_role_iam_prd():
+    def assume_role_iam_pearson():
 
         """
             Assume admin role within the Pearson-IAM account and return credentials
         """
-        s = boto3.Session(profile_name='prd')
+        s = boto3.Session(profile_name='pearson')
         sts_client = s.client('sts')
         role_arn = 'arn:aws:iam::812653090533:role/managed-role/PearsonAdmin'
 
@@ -343,6 +309,8 @@ def main(arguments):
         # credentials that can be used to make subsequent API calls
         return assumedroleobject['Credentials']
 
+    # Create groups in iam-pearson account
+
     def get_groups_template(template_groups_file):
 
         """
@@ -351,8 +319,8 @@ def main(arguments):
 
         print("Reading resources from " + template_groups_file)
         f = open(template_groups_file, "r")
-        groups_template = f.read()
-        return groups_template
+        iam_groups_template = f.read()
+        return iam_groups_template
 
     def deploy_groups(credentials, template, stack_name, stack_region, AWSAccountNumber):
 
@@ -430,14 +398,11 @@ def main(arguments):
         return stack
 
     enable_enterpris()
-
-
-    credential = assume_role_iam_prd()
+    credential = assume_role_iam_pearson()
     groups_template = get_groups_template('groups.yml')
-    deploy_groups(credential, template=groups_template, stack_name='prd-iam-groups-' + accountid,
+    deploy_groups(credential, template=groups_template, stack_name='pearson-iam-groups-' + accountid,
                   stack_region='us-east-1', AWSAccountNumber=accountid)
 
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
-

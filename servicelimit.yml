@@ -1,0 +1,34 @@
+policies:
+  - name: users-service-limits
+    region: us-east-1
+    resource: account
+    filters:
+      - type: service-limit
+        services:
+          - IAM
+        limits:
+          - Users
+    actions:
+      - type: notify
+        subject: IAM Users Service Limits
+        violation_desc: |
+          We have noticed you have recently created an s3 bucket with public access.
+          If not intended, this exposes your data to external attacks and is not permitted.
+          This policy violation was remediated immediately deleting the associated bucket ACL permissions.
+        action_desc: |
+          Please restrict your s3 access using bucket policy. Granting authenticated "FULL_CONTROL" access to AWS S3 buckets can allow other AWS accounts
+          or IAM users to view, upload, modify and delete S3 objects without any restrictions.
+          Exposing your S3 buckets to AWS signed accounts or users can lead to data leaks, data loss and unexpected charges for the S3 service.
+          If your S3 bucket is intended to be publicly accessed, please use bucket policy to allow public access.
+          Also, the Cloud Management team highly encourages the use of Amazon CloudFront to serve public traffic instead of direct s3 access.
+          While this policy does not remediate object-level access we do have another policy that does.
+          If your use case require allowing object-level access, "using object ACL" and the task can't be performed using bucket policy,
+          please tag your buck with "pearson-public-objects" for it to be whitelisted and marked for future entitlement reviews.
+
+          For more information about s3 security best practices:
+
+          https://aws.amazon.com/blogs/security/how-to-use-bucket-policies-and-apply-defense-in-depth-to-help-secure-your-amazon-s3-data/
+        to: []
+        transport:
+          type: sns
+          topic: arn:aws:sns:us-east-1:747207162522:governator-account-notices
